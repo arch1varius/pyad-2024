@@ -61,23 +61,20 @@ def recommend_books(ratings: pd.DataFrame, svd_model: SVD, linreg_model, books: 
     merged = pd.merge(recommendations_df, books, on='ISBN', how='left')
     merged = merged[merged['Book-Title'].notna() & (merged['Book-Title'] != '')]
 
-    # Преобразование заголовков книг в числовые признаки с использованием TF-IDF
-    tfidf = TfidfVectorizer(max_features=500)
-    title_vectors = tfidf.fit_transform(merged['Book-Title']).toarray()
+    with open("tfidf.pkl", "rb") as tfidf_file:
+        tfidf = pickle.load(tfidf_file)
 
-    # Кодируем категориальные признаки
+    title_vectors = tfidf.transform(merged['Book-Title']).toarray()
+
     merged['Book-Author'] = merged['Book-Author'].astype('category').cat.codes
     merged['Publisher'] = merged['Publisher'].astype('category').cat.codes
     merged['Year-Of-Publication'] = pd.to_numeric(merged['Year-Of-Publication'], errors='coerce')
 
-    # Объединяем все признаки в один DataFrame
     features = pd.concat([pd.DataFrame(title_vectors, index=merged.index),
                           merged[['Book-Author', 'Publisher', 'Year-Of-Publication']]], axis=1)
 
-    # Преобразуем имена признаков в строки
     features.columns = features.columns.astype(str)
 
-    # Применяем линейную регрессию для предсказания рейтингов
     linreg_ratings = linreg_model.predict(features)
     merged['linreg_rating'] = linreg_ratings
 
@@ -88,12 +85,13 @@ if __name__ == "__main__":
     books = pd.read_csv("Books.csv", low_memory=False)
     ratings = ratings_preprocessing(ratings)
     books = books_preprocessing(books)
-    # Загрузка моделей
     with open("svd.pkl", "rb") as svd_file:
         svd_model = pickle.load(svd_file)
     with open("linreg.pkl", "rb") as linreg_file:
         linreg_model = pickle.load(linreg_file)
-
-    # Рекомендация
     recommendations = recommend_books(ratings, svd_model, linreg_model, books)
-    print(recommendations)
+    if not recommendations.empty:
+        recommendations.to_csv("recommendation.txt", sep="\t", index=False, encoding="utf-8")
+    else:
+        with open("recommendation.txt", "w", encoding="utf-8") as file:
+            file.write("No recommendations available.")

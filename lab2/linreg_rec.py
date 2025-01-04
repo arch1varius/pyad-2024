@@ -45,35 +45,29 @@ def books_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 def prepare_data(ratings_df, books_df):
 
-    # Объединение данных
     data = pd.merge(ratings_df, books_df, on='ISBN', how='inner')
 
-    # Средний рейтинг книг
     avg_ratings = data.groupby('ISBN')['Book-Rating'].mean().reset_index()
     avg_ratings.rename(columns={'Book-Rating': 'Average-Rating'}, inplace=True)
 
-    # Объединение с книгами
     full_data = pd.merge(books_df, avg_ratings, on='ISBN', how='inner')
 
-    # Удаление пропусков
     full_data.dropna(subset=['Book-Title', 'Book-Author', 'Publisher', 'Year-Of-Publication'], inplace=True)
 
     return full_data
 
-# Преобразование данных
 def transform_data(data):
-    # Векторизация названий книг
-    tfidf = TfidfVectorizer(max_features=500)
+    tfidf = TfidfVectorizer(max_features=1000)
     title_vectors = tfidf.fit_transform(data['Book-Title']).toarray()
 
-    # Числовая кодировка текстовых признаков
+    with open("tfidf.pkl", "wb") as file:
+        pickle.dump(tfidf, file)
+
     data['Book-Author'] = data['Book-Author'].astype('category').cat.codes
     data['Publisher'] = data['Publisher'].astype('category').cat.codes
 
-    # Нормализация года публикации
     data['Year-Of-Publication'] = pd.to_numeric(data['Year-Of-Publication'], errors='coerce')
 
-    # Формирование итогового набора данных
     X = pd.concat([
         pd.DataFrame(title_vectors, index=data.index),
         data[['Book-Author', 'Publisher', 'Year-Of-Publication']]
@@ -85,21 +79,16 @@ def transform_data(data):
 
     return X, y, tfidf
 
-# Нормализация и обучение модели
 def train_model(X, y):
-    # Разделение данных на обучающую и тестовую выборки
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Нормализация
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # Обучение модели
-    model = SGDRegressor(max_iter=1000, tol=1e-3, random_state=42)
+    model = SGDRegressor(max_iter=2000, tol=1e-4, alpha=0.01, penalty='l2', learning_rate='adaptive')
     model.fit(X_train, y_train)
 
-    # Оценка качества
     y_pred = model.predict(X_test)
     mae = mean_absolute_error(y_test, y_pred)
     print(f'Mean Absolute Error: {mae}')
